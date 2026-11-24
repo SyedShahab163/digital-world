@@ -17,5 +17,9 @@ export function middleware(req: NextRequest) {
   res.headers.set("X-Robots-Tag", "noindex, nofollow");
   return res;
 }
-
+const nextConfig = {
+  experimental: {
+    nodeMiddleware: true,
+  },
+}
 export const config = { matcher: ["/admin/:path*"] };
