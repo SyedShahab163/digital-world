@@ -1,0 +1,312 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+}
+
+enum ProductCondition {
+  NEW
+  USED
+  REFURBISHED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PopupPage {
+  HOME
+  SHOP
+  PRODUCT
+  OTHER
+}
+
+enum PopupStatus {
+  DRAFT // saved but never shown
+  PUBLISHED // eligible to show when active, in schedule and the master switch is ON
+}
+
+enum PopupFrequency {
+  SESSION // once per browser session (default)
+  ONCE // once per visitor, until they clear site data
+}
+
+enum BannerType {
+  HERO
+  PROMO
+  OFFER
+}
+
+model Admin {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  role         AdminRole @default(ADMIN)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String?  @unique
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  orders    Order[]
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  slug        String    @unique
+  description String?
+  imageUrl    String?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  products    Product[]
+}
+
+model Product {
+  id             String           @id @default(cuid())
+  name           String
+  slug           String           @unique
+  brand          String
+  model          String
+  description    String?
+  price          Int
+  discountPrice  Int?
+  condition      ProductCondition @default(NEW)
+  processor      String
+  ram            String
+  storage        String
+  graphics       String?
+  display        String?
+  battery        String?
+  stock          Int              @default(0)
+  isFeatured     Boolean          @default(false)
+  isLatest       Boolean          @default(false)
+  isActive       Boolean          @default(true)
+  publishAt      DateTime?
+  unpublishAt    DateTime?
+  seoTitle       String?
+  seoDescription String?
+  categoryId     String?
+  category       Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  images         ProductImage[]
+  videos         ProductVideo[]
+  popups         PromoPopup[]
+  orderItems     OrderItem[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([brand])
+  @@index([price])
+  @@index([condition])
+  @@index([categoryId])
+  @@index([createdAt])
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  publicId  String?
+  sortOrder Int     @default(0)
+
+  @@index([productId])
+}
+
+// Videos are stored in Cloudinary (or ./uploads in development); only the URL is kept here.
+model ProductVideo {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  publicId  String?
+  sortOrder Int     @default(0)
+
+  @@index([productId])
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  orderNumber   String      @unique
+  userId        String?
+  user          User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  customerName  String
+  customerPhone String
+  customerEmail String?
+  address       String
+  city          String
+  notes         String?
+  status        OrderStatus @default(PENDING)
+  total         Int
+  items         OrderItem[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  name      String
+  price     Int
+  quantity  Int
+
+  @@index([orderId])
+}
+
+model Testimonial {
+  id          String    @id @default(cuid())
+  name        String
+  role        String?
+  content     String
+  rating      Int       @default(5)
+  isPublished Boolean   @default(true)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Banner {
+  id        String     @id @default(cuid())
+  type      BannerType @default(HERO)
+  title     String
+  subtitle  String?
+  imageUrl  String?
+  linkUrl   String?
+  linkLabel String?
+  isActive  Boolean    @default(true)
+  sortOrder Int        @default(0)
+  startsAt  DateTime?
+  endsAt    DateTime?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+// Promotional popup shown to storefront visitors. If productId is set, the product's
+// live name/price/discount/condition/image are used unless overridden below.
+model PromoPopup {
+  id              String            @id @default(cuid())
+  title           String // headline / product name shown in the popup
+  badge           String? // e.g. "Limited offer"
+  description     String?
+  productId       String?
+  product         Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  imageUrl        String? // custom image (overrides the product photo)
+  imagePublicId   String?
+  price           Int? // custom / override price
+  discountPrice   Int?
+  condition       ProductCondition?
+  ctaLabel        String?
+  ctaUrl          String?
+  whatsappMessage String?
+  placements      PopupPage[]
+  frequency       PopupFrequency    @default(SESSION)
+  delaySeconds    Int               @default(2)
+  priority        Int               @default(0) // higher shows first
+  isActive        Boolean           @default(true)
+  status          PopupStatus       @default(DRAFT)
+  publishedAt     DateTime?
+  activeDays      Int[] // 0=Sunday..6=Saturday in the business timezone; empty = every day
+  startsAt        DateTime?
+  endsAt          DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([status, isActive, priority])
+}
+
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  email     String?
+  phone     String?
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// Key/value store for admin-configurable site info: contact details,
+// address, social links, announcement bar, delivery policy, warranty text.
+model SiteSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------- Website CMS ----------------
+enum MediaKind {
+  IMAGE
+  VIDEO
+}
+
+// Reusable uploaded file (Cloudinary, or local /uploads in development). CMS content references assets by id,
+// so replacing the file updates every place it is used.
+model MediaAsset {
+  id        String    @id @default(cuid())
+  kind      MediaKind
+  url       String
+  publicId  String
+  mime      String
+  size      Int
+  filename  String
+  alt       String    @default("")
+  folder    String    @default("General")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([kind, createdAt])
+  @@index([folder])
+}
+
+// Site-wide editable documents ("site" = logos, design, header, footer, SEO; "home" = homepage).
+// draft = what the admin is editing, published = what visitors see.
+model CmsDocument {
+  key          String    @id
+  draft        Json?
+  published    Json?
+  hasChanges   Boolean   @default(false)
+  publishedAt  DateTime?
+  draftSavedAt DateTime?
+  updatedAt    DateTime  @updatedAt
+}
+
+// Editable pages (About, Contact, policies and custom pages) with the same draft/published model.
+model Page {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  title       String
+  isSystem    Boolean   @default(false)
+  draft       Json
+  published   Json?
+  hasChanges  Boolean   @default(true)
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
